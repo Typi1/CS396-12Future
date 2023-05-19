@@ -3,12 +3,7 @@
 (require redex)
 
 ;; NOTES FOR LATER REVIEW
-;; - note that with the current transition function for the C machine, a regular bind and future bind aren't inherantly equal
-;; this is because we can use the form (let (x M) N) in the syntax to allow for simplification in the M term to a value,
-;; but this functionality is missing from the futures ver. To remedy this I added (let (x (future M)) N) to the syntax,
-;; but we should ask if we can do that. I'd argue yes, because the purpose of the C-machine in the
-;; paper is to be a version of the language where a term with and a term without a future are
-;; functionally equivalent. 
+;; 
 ;;
 ;;
 ;;
@@ -61,13 +56,12 @@
   (E ::= hole (let (x E) M) (let (x (future E)) M)) ;; evaluation contexts
   (M N O ::= V
      (let (x V) M)
-     (let (x (future V)) M)
+     (let (x (future M)) N) ;; oops, the M was a V before. FIXED
      (let (x (car V)) M)
      (let (x (cdr V)) M)
      (let (x (if V M N)) O)
      (let (x (apply V V)) M)
      (let (x M) N)
-     (let (x (future M)) N) ;; ASK IF WE CAN DO THIS
   ))
 
 ;; transition rules
@@ -82,8 +76,8 @@
     bind]
    
    ;; future-id. same as bind here since future has no current functionality differences. pops a let statement
-   [--> (in-hole E (let (x (future V)) M))
-        (in-hole E (substitute M x V))
+   [--> (in-hole E (let (x (future M_1)) M_2))
+        (in-hole E (substitute M_2 x M_1))
    ;;[--> (let (x_1 E) (let (x_2 (future V)) M))
    ;;     (let (x_1 E) (substitute M x_2 V))
     future-id]
@@ -383,11 +377,35 @@
 (test-equal
  (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (a (cdr y)) a)))))
  (term 3))
+;; These following 2 tests don't work bc they can't even load, since we cannot get the form (let (b (car M)) N) in our language, bc M has to be a V. 
+; (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (car (let (a (car y)) a))) b)))))
+; (term 1))
+;(test-equal
+; (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (cdr (let (a (car y)) a))) b)))))
+; (term 2))
+;; A way to make these work is to put the M in the body rather than the argument. In general, this should be done rather than nesting in the argument since that can often make it not a valid C-machine program.
 (test-equal
- (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (car (let (a (car y)) a))) b)))))
+ (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (a (car y)) (let (b (car a)) b))))))
  (term 1))
 (test-equal
- (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (cdr (let (a (car y)) a))) b)))))
+ (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (a (car y)) (let (b (cdr a)) b))))))
  (term 2))
+;; super convoluted version of the above test
+;; This example defines z as a function that gets the car of some cons. Since a variable is a value, we can use apply and nesting (in their body NOT arg) to repeatedly get further car from nested cons
+(test-equal
+ (eval-C (term (let (z (λ (c) (let (d (car c)) d))) ;; z is a function that is passed a cons and then returns its car
+                 (let (x (cons 1 2)) (let (y (cons x 3)) ;; define y as (cons (cons 1 2) 3)
+                                       (let (a (apply z y)) ;; a is the cons in the car of y: (cons 1 2)
+                                         (let (b (apply z a)) b))))))) ;; b is the car in the car of y: 1
+ (term 1))
+(test-equal
+ (eval-C (term (let (z (λ (c) (let (d (car c)) d))) ;; z is a function that is passed a cons and then returns its car
+                 (let (x (cons 1 2)) (let (y (cons x 3)) ;; define y as (cons (cons 1 2) 3)
+                                       (let (a (apply z y)) ;; a is the cons in the car of y: (cons 1 2)
+                                         (let (b (cdr a)) b))))))) ;; b is the cdr in the car of y: 1
+ (term 2))
+;(test-equal
+; (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (cdr (let (a (car y)) a))) b)))))
+; (term 2))
 
 (test-results)
