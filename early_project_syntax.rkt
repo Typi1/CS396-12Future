@@ -90,16 +90,19 @@
    [--> (in-hole E (let (x (car V)) M))
    ;;[--> (let (x_1 E) (let (x_2 (car V)) M))
         error ;; if car is called on a value that isn't cons
+        (side-condition (not (redex-match? C (cons V_1 V_2) (term V))))
     car_fail]
    ;; cdr. pops a let statement
    [--> (in-hole E (let (x (cdr (cons V_1 V_2))) M))
         (in-hole E (substitute M x V_2))
+        (side-condition (not (redex-match? C nil (term V))))
    ;;[--> (let (x_1 E) (let (x_2 (cdr (cons V_1 V_2))) M))
    ;;     (let (x_1 E) (substitute M x_2 V_2))
     cdr]
    [--> (in-hole E (let (x (cdr V)) M))
    ;;[--> (let (x_1 E) (let (x_2 (cdr V)) M))
         error ;; if cdr is called on a value that isn't cons
+        (side-condition (not (redex-match? C (cons V_1 V_2) (term V))))
     cdr_fail]
    ;; if. pops a let statement and pushes a new one
    [--> (in-hole E (let (x (if nil M_1 M_2)) M_3)) ;; if the value is nil, then choose M_2
@@ -107,6 +110,7 @@
         if_else]
    [--> (in-hole E (let (x (if V M_1 M_2)) M_3)) ;; if the value is NOT nil, then choose M_1
         (in-hole E (let (x M_1) M_3))
+        (side-condition (not (redex-match? C nil (term V))))
         if_then
     ]
    ;;[--> (let (x_1 E) (let (x_2 (if nil M_1 M_2)) M_3)) ;; if the value is nil, then choose M_2
@@ -404,8 +408,41 @@
                                        (let (a (apply z y)) ;; a is the cons in the car of y: (cons 1 2)
                                          (let (b (cdr a)) b))))))) ;; b is the cdr in the car of y: 1
  (term 2))
-;(test-equal
-; (eval-C (term (let (x (cons 1 2)) (let (y (cons x 3)) (let (b (cdr (let (a (car y)) a))) b)))))
-; (term 2))
+;; error cases: called on a value that isn't cons
+(test-equal
+ (eval-C (term (let (x (car 1)) x)))
+ (term error))
+(test-equal
+ (eval-C (term (let (x (car 2)) x)))
+ (term error))
+
+
+;;
+;; test if
+;;
+
+;; true case
+(test-equal
+ (eval-C (term (let (x (if 1 2 3)) x)))
+ (term 2))
+(test-equal
+ (eval-C (term (let (x (if (λ (x) x) 2 3)) x)))
+ (term 2))
+(test-equal
+ (eval-C (term (let (x (if (cons nil nil) 2 3)) x)))
+ (term 2))
+(test-equal
+ (eval-C (term (let (x (if (cons nil nil) (let (x 2) x) 3)) x)))
+ (term 2))
+;; else case
+(test-equal
+ (eval-C (term (let (x (if nil 2 3)) x)))
+ (term 3))
+(test-equal
+ (eval-C (term (let (x (if nil 2 (let (x 3) x))) x)))
+ (term 3))
+
+
+;; Note: no specific section on apply atm. I think I demonstrated it worked pretty well in previous examples, but feel free to add any tests for it below.
 
 (test-results)
