@@ -26,8 +26,9 @@
      (let (x (cdr y)) M)
      (let (x (if y M N)) O)
      (let (x (apply y z)) M)
+     
      ) ;; TERMS
-  (u v ::= b x (λ (x) M) (cons v v)) ;; VALUES
+  (u v ::= b x (λ (x) M) (cons v v) (car y)) ;; VALUES
   (x y z ::= variable-not-otherwise-mentioned) ;; VARS
   (b c ::= nil integer) ;; CONST
   #:binding-forms
@@ -83,7 +84,7 @@
   [(match-p p_1 p_2) #f])
 
 (define-metafunction PCEK
-  lookup : x E -> V
+  lookup : x E -> V 
   [(lookup x ((x V) (x_1 V_1) ...)) V]
   [(lookup x ((x_1 V_1) (x_2 V_2) ...)) (lookup x ((x_2 V_2) ...))]
   [(lookup x ()) error])
@@ -111,12 +112,12 @@
   )
 
 (define-metafunction PCEK
-  touch-PCEK : V -> any/c ; TODO FIX ANY
-  [(touch-PCEK (ph p mt))
+  touch : V -> any/c ; TODO FIX ANY
+  [(touch (ph p mt))
    mt]
-  [(touch-PCEK (ph p V))
+  [(touch (ph p V))
    V]
-  [(touch-PCEK PValue) PValue]
+  [(touch PValue) PValue]
   )
 
 (define-metafunction PCEK
@@ -146,13 +147,7 @@
    ((ar-t x M (substitute-E E p V)) (substitute-K K p V))]
   )
 
-(define-metafunction PCEK
-  car : pair -> V
-  [(car (V_1 V_2)) V_1])
 
-(define-metafunction PCEK
-  cdr : pair -> V
-  [(cdr (V_1 V_2)) V_2])
 
 
 ;;
@@ -165,23 +160,29 @@
   (reduction-relation
    PCEK
    [--> ((let (x c) M) E K)
-        (M (extend x c E) K)]
+        (M (extend x c E) K)
+        bind-const]
    
    [--> ((let (x y) M) E K)
-        (M (extend x (lookup y E) E) K)]
+        (M (extend x (lookup y E) E) K)
+        bind-var]
    
    [--> ((let (x (λ (y) N)) M) E K)
-        (M (extend x ((λ (y) N) E) E) K)] ; TODO should use FV(N)
+        (M (extend x ((λ (y) N) E) E) K) ; TODO should use FV(N)
+        bind-lam]
 
    [--> ((let (x (cons y z)) M) E K)
-        (M (extend x (cons (lookup y E) (lookup z E)) E) K)]
+        (M (extend x (cons (lookup y E) (lookup z E)) E) K)
+        bind-cons]
 
    [--> (x E ((ar y M E_1) K))
-        (M (extend y (lookup x E) E_1) K)]
+        (M (extend y (lookup x E) E_1) K)
+        return]
 
    [--> ((let (x (car y)) M) E K)
         (M (extend x (car (touch (lookup y E))) E) K) ; TODO might be a simpler way to do this
-        (where (y z) (touch (lookup y E)))]
+        (where (y z) (touch (lookup y E)))
+        car]
 
 ;   [--> ((let (x (car y)) M) E K)
 ;        (M (extend x V_1 E) K)
@@ -195,45 +196,54 @@
    [--> ((let (x (car y)) M) E K)
         error
         (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term pair))))]
+        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term pair))))
+        car-fail]
 
    [--> ((let (x (cdr y)) M) E K)
         (M (extend x (cdr (touch (lookup y E))) E) K) ; TODO might be a simpler way to do this
-        (side-condition (redex-match? PCEK (touch (lookup y E)) (term pair)))]
+        (side-condition (redex-match? PCEK (touch (lookup y E)) (term pair)))
+        cdr]
 
    [--> ((let (x (cdr y)) M) E K)
         error
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))]
+        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
+        cdr-fail]
    
    [--> ((let (x (if y M_1 M_2)) M) E K)
         (M_2 E ((ar x M E) K))
         (side-condition (redex-match? PCEK (touch (lookup y E)) (term nil)))
-        ]
+        if-else]
 
    [--> ((let (x (if y M_1 M_2)) M) E K)
         (M_1 E ((ar x M E) K))
         (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
-        ]
+        if-then]
 
    ;[--> ((let (x (apply y z)) M) E K)  USE WHERE
 
    [--> ((let (x (future N)) M) E K)
-        (N E ((ar-t x M E) K))]
+        (N E ((ar-t x M E) K))
+        future]
 
    [--> (x E ((ar-t y M E_1) K))
-        (M (extend y (lookup x E) E_1) K)]
+        (M (extend y (lookup x E) E_1) K)
+        future-id]
 
    [--> (M E (activation-record_1 ((ar-t x N E_1) K_2)))
-        (f-let (p (M E (activation-record_1 mt))) (N (extend x (ph (generate-p) mt) E_1) K_2))]
+        (f-let (p (M E (activation-record_1 mt))) (N (extend x (ph (generate-p) mt) E_1) K_2))
+        fork]
 
    [--> (f-let (p (x E mt)) S)
-        (substitute-S S p (lookup x E))]
+        (substitute-S S p (lookup x E))
+        join]
 
    [--> (f-let (p error) S)
-        error]
+        error
+        join-error]
 
    [--> (f-let (p_2 (f-let (p_1 S_1) S_2)) S_3)
-        (f-let (p_1 S_1) (f-let (p_2 S_2) S_3))] ; TODO? p1 not in FP(S_3)
+        (f-let (p_1 S_1) (f-let (p_2 S_2) S_3)) ; TODO? p1 not in FP(S_3)
+        lift]
    ))
 
 
@@ -274,8 +284,17 @@
    (term
     (let (x 1)
       (let (y 2)
-        (let (z (cons x y)))))
+        (let (z (cons x y)) z)))
     )))
+
+(traces
+ -->PCEK
+ (load-PCEK
+  (term
+   (let (a 1)
+     (let (b 2)
+       (let (y (cons a b))
+         (let (x (car y)) x)))))))
 
 
 
