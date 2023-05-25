@@ -184,15 +184,6 @@
         (where (cons V_1 V_2) (touch (lookup y E)))
         car]
 
-;   [--> ((let (x (car y)) M) E K)
-;        (M (extend x V_1 E) K)
-;        (where (V_1 V_2) (touch (lookup y E)))]
-;
-;   [--> ((let (x (car y)) M) E K)
-;        (M (extend x V_1 E) K) ; TODO might be a simpler way to do this
-;        (where (V_1 V_2) (touch (lookup y E)))
-;        (side-condition (redex-match? PCEK (touch (lookup y E)) (term pair)))]
-
    [--> ((let (x (car y)) M) E K)
         error
         (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
@@ -200,13 +191,14 @@
         car-fail]
 
    [--> ((let (x (cdr y)) M) E K)
-        (M (extend x (cdr (touch (lookup y E))) E) K)
-        (side-condition (redex-match? PCEK pair (term (touch (lookup y E)))))
+        (M (extend x V_2 E) K)
+        (where (cons V_1 V_2) (touch (lookup y E)))
         cdr]
 
    [--> ((let (x (cdr y)) M) E K)
         error
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
+        (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
+        (side-condition (not (redex-match? PCEK pair (term (touch (lookup y E))))))
         cdr-fail]
    
    [--> ((let (x (if y M_1 M_2)) M) E K)
@@ -259,12 +251,22 @@
   (let ([res (first (apply-reduction-relation*
                      -->PCEK
                      (load-PCEK (term ,inp))))])
-    (term (unload-PCEK (lookup ,(first res) ,(second res))))))
+    (cond
+      [(equal? res 'error) 'error]
+      [else (term (unload-PCEK (lookup ,(first res) ,(second res))))])))
 
 
 (test-equal
  (eval-PCEK (term (let (y 2) (let (x 3) (let (z 1) x)))))
  (term 3))
+
+(test-equal
+ (eval-PCEK
+  (term
+   (let (y 1) (let (x (car y)) x))
+   ))
+ (term error))
+
 
 ;(test-equal
 ; (eval-PCEK (term (let (y 1) (let (x (if y 2 3)) x))))
@@ -298,7 +300,7 @@
 
 
 
-
+(test-results)
 
 
 
