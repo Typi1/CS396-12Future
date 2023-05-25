@@ -203,12 +203,13 @@
    
    [--> ((let (x (if y M_1 M_2)) M) E K)
         (M_2 E ((ar x M E) K))
-        (side-condition (redex-match? PCEK (touch (lookup y E)) (term nil)))
+        (side-condition (redex-match? PCEK nil (term (touch (lookup y E)))))
         if-else]
 
    [--> ((let (x (if y M_1 M_2)) M) E K)
         (M_1 E ((ar x M E) K))
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
+        (side-condition (not (redex-match? PCEK nil (term (touch (lookup y E))))))
+        (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
         if-then]
 
    ;[--> ((let (x (apply y z)) M) E K)  USE WHERE
@@ -236,6 +237,10 @@
    [--> (f-let (p_2 (f-let (p_1 S_1) S_2)) S_3)
         (f-let (p_1 S_1) (f-let (p_2 S_2) S_3)) ; TODO? p1 not in FP(S_3)
         lift]
+
+   [--> (f-let (p S_1) S_2)
+        (f-let (p S_1*) S_2)
+        (where #t #t)]
    ))
 
 
@@ -267,6 +272,23 @@
    ))
  (term error))
 
+(test-equal
+ (eval-PCEK
+  (term
+   (let (a 1)
+     (let (b 2)
+       (let (y (cons a b))
+         (let (x (car y)) x))))
+   ))
+ (term 1))
+
+(test-equal
+ (eval-PCEK
+  (term
+   (let (x 3) (let (y (future x)) y))
+   ))
+ (term 3))
+
 
 ;(test-equal
 ; (eval-PCEK (term (let (y 1) (let (x (if y 2 3)) x))))
@@ -289,16 +311,12 @@
 ;        (let (z (cons x y)) z)))
 ;    )))
 
-(traces
- -->PCEK
- (load-PCEK
-  (term
-   (let (a 1)
-     (let (b 2)
-       (let (y (cons a b))
-         (let (x (car y)) x)))))))
-
-
+;(traces
+; -->PCEK
+; (load-PCEK
+;  (term
+;   (let (x 3) let (y (future x) y))
+;   )))
 
 (test-results)
 
