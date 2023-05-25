@@ -1,0 +1,144 @@
+#lang racket
+
+(require redex)
+
+;; NOTES FOR LATER REVIEW
+;; 
+;;
+;;
+;;
+
+
+
+
+;;
+;;
+;; BASIC SYNTAX
+;;
+;;
+
+(define-language DefF
+  (M N O ::= x
+     (let (x v) M)
+     (let (x (future M)) N)
+     (let (x (car y)) M)
+     (let (x (cdr y)) M)
+     (let (x (if y M N)) O)
+     (let (x (apply y z)) M)
+     ) ;; TERMS
+  (u v ::= b x (λ (x) M) (cons x y)) ;; VALUES
+  (x y z ::= variable-not-otherwise-mentioned) ;; VARS
+  (b c ::= nil integer) ;; CONST
+  #:binding-forms
+  (λ (x) M #:refers-to x)
+  (let (x v) M #:refers-to x)
+  (let (x (future M)) N #:refers-to x)
+  (let (x (car y)) M #:refers-to x)
+  (let (x (cdr y)) M #:refers-to x)
+  (let (x (if y M N)) O #:refers-to x)
+  (let (x (apply y z)) M #:refers-to x)
+  )
+(default-language DefF)
+
+;;
+;;
+;; C-MACHINE RUNTIME LANGUAGE
+;;
+;;
+
+;; additional syntax for runtime
+(define-extended-language PCEK
+  DefF
+  (S ::= (M E K) error (f-let (p S_1) S_2))
+  (E ::= ((x V) ...)) ;; eval context var -> value
+  (PValue ::=  c x (λ (x) M) (cons V_1 V_2))
+  (p ::= symbol) ; TODO should this be a variable?
+  (V ::= PValue (ph p mt) (ph p V)) ;; differs from DefF values (runtime values). Note cons having runtime values rather than DefF values
+  (K ::= mt ((ar x M E) K) ((ar-t x M E) K))
+  (F ::= (x E mt) error) ;; final state must be a value or an error (NOT a term)
+  ;(A ::= c procedure (cons A A)) ;; answer is either a constant, the keyword "procedure", or a cons of answers
+  (M N O ::= V
+     (let (x V) M)
+     (let (x (future M)) N)
+     (let (x (car V)) M)
+     (let (x (cdr V)) M)
+     (let (x (if V M N)) O)
+     (let (x (apply V V)) M)
+     (let (x M) N)
+  ))
+
+(define-metafunction PCEK
+  generate-p : -> p
+  [(generate-p) (gensym)])
+
+(define-metafunction PCEK
+  match-p : p_1 p_2 -> boolean
+  [(match-p p_1 p_1) #t]
+  [(match-p p_1 p_2) #f])
+
+(define-metafunction PCEK
+  lookup : x E -> V
+  [(lookup x ((x V) (x_1 V_1) ...)) V]
+  [(lookup x ((x_1 V_1) (x_2 V_2) ...)) (lookup x ((x_2 V_2) ...))]
+  [(lookup x ()) error])
+
+(define-metafunction PCEK
+  extend : x V E -> E
+  [(extend x V ((x_1 V_1) ...)) ((x V) (x_1 V_1) ...)])
+
+(define-metafunction PCEK
+  update-p : p V E -> E
+  [(update-p p V ((x (ph p mt)) (x_1 V_1) ...)) ((x (ph p V)) (x_1 V_1) ...)]
+  [(update-p p V ((x_1 V_1) (x_2 V_2) ...)) (update p V ((x_2 V_2) ...))]
+  [(update-p p V ()) error])
+
+(define-metafunction PCEK
+  unload-PCEK : V -> A
+  [(unload-PCEK c)
+   c]
+  [(unload-PCEK (λ (x) M))
+   procedure]
+  [(unload-PCEK (cons V_1 V_2))
+   (cons (unload-C V_1) (unload-C V_2))]
+  [(unload-PCEK (ph p V))
+   (unload-PCEK V)]
+  )
+
+(define-metafunction PCEK
+  touch-PCEK : V -> any/c ; TODO FIX THIS
+  [(touch-PCEK (ph p mt))
+   mt]
+  [(touch-PCEK (ph p V))
+   V]
+  [(touch-PCEK PValue) PValue]
+  )
+
+(define-metafunction PCEK
+  substitute-PCEK : S p V -> S
+  [(substitute-PCEK (f-let (p S_1) S_2) p V)
+   (f-let (p (substitute-PCEK S_1 p V)) S_2)]
+  [(substitute-PCEK (f-let (p_1 S_1) S_2) p V)
+   (f-let (p_1 (substitute-PCEK S_1 p V)) (substitute-PCEK S_2 p V))]
+  [(substitute-PCEK (M E K))
+   (M (substitute-PCEK E p V) (substitute-PCEK K p V))]
+  [(substitute-PCEK error)
+   error]
+
+  substitute-PCEK : E p V -> E
+  [(substitute-PCEK E p V) (update-p p V E)]
+
+  substitute-PCEK : K p V -> K
+  [(substitute-PCEK mt p V)
+   mt]
+  [(substitute-PCEK ((ar x M E) K) p V)
+   ((ar x M (substitute-PCEK E p V)) (substitute-PCEK K p V))]
+  [(substitute-PCEK ((ar-t x M E) K) p V)
+   ((ar-t x M (substitute-PCEK E p V)) (substitute-PCEK K p V))]
+  )
+
+
+
+
+
+  
+
