@@ -112,7 +112,7 @@
   )
 
 (define-metafunction PCEK
-  touch : V -> any/c ; TODO FIX ANY
+  touch : V -> V or mt ; TODO FIX ANY
   [(touch (ph p mt))
    mt]
   [(touch (ph p V))
@@ -180,8 +180,8 @@
         return]
 
    [--> ((let (x (car y)) M) E K)
-        (M (extend x (car (touch (lookup y E))) E) K) ; TODO might be a simpler way to do this
-        (where (y z) (touch (lookup y E)))
+        (M (extend x V_1 E) K)
+        (where (cons V_1 V_2) (touch (lookup y E)))
         car]
 
 ;   [--> ((let (x (car y)) M) E K)
@@ -195,13 +195,13 @@
 
    [--> ((let (x (car y)) M) E K)
         error
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term mt))))
-        (side-condition (not (redex-match? PCEK (touch (lookup y E)) (term pair))))
+        (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
+        (side-condition (not (redex-match? PCEK pair (term (touch (lookup y E))))))
         car-fail]
 
    [--> ((let (x (cdr y)) M) E K)
-        (M (extend x (cdr (touch (lookup y E))) E) K) ; TODO might be a simpler way to do this
-        (side-condition (redex-match? PCEK (touch (lookup y E)) (term pair)))
+        (M (extend x (cdr (touch (lookup y E))) E) K)
+        (side-condition (redex-match? PCEK pair (term (touch (lookup y E)))))
         cdr]
 
    [--> ((let (x (cdr y)) M) E K)
@@ -277,15 +277,15 @@
 ;    (let (y 1) (let (x (if y 2 3)) x))
 ;    )))
 
-(traces
-  -->PCEK
-  (load-PCEK
-   ;((let (x (if y M_1 M_2)) M) E K)
-   (term
-    (let (x 1)
-      (let (y 2)
-        (let (z (cons x y)) z)))
-    )))
+;(traces
+;  -->PCEK
+;  (load-PCEK
+;   ;((let (x (if y M_1 M_2)) M) E K)
+;   (term
+;    (let (x 1)
+;      (let (y 2)
+;        (let (z (cons x y)) z)))
+;    )))
 
 (traces
  -->PCEK
