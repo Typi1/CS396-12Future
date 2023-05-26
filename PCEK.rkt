@@ -56,8 +56,8 @@
   (b c ::= nil integer) ;; 
   (PValue ::=  c x ((λ (x) M) E) pair)
   (pair ::= (cons V V))
-  (p ::= symbol) ; TODO should this be a variable?
   (V ::= PValue (ph p mt) (ph p V)) ;; differs from DefF values (runtime values). Note cons having runtime values rather than DefF values
+  (p ::= string) ; TODO should this be a variable?
   (A ::= c procedure (cons A A)) ;; answer is either a constant, the keyword "procedure", or a cons of answers
   (activation-record ::= (ar x M E) (ar-t x M E))
   (K ::= mt (activation-record K))
@@ -76,7 +76,7 @@
 
 (define-metafunction PCEK
   generate-p : -> p
-  [(generate-p) (gensym)]) ; also can do by counting largest p
+  [(generate-p) ,(symbol->string (gensym))]) ; also can do by counting largest p
 
 (define-metafunction PCEK
   match-p : p_1 p_2 -> boolean
@@ -84,7 +84,7 @@
   [(match-p p_1 p_2) #f])
 
 (define-metafunction PCEK
-  lookup : x E -> V 
+  lookup : x E -> V
   [(lookup x ((x V) (x_1 V_1) ...)) V]
   [(lookup x ((x_1 V_1) (x_2 V_2) ...)) (lookup x ((x_2 V_2) ...))]
   [(lookup x ()) error])
@@ -93,16 +93,22 @@
   extend : x V E -> E
   [(extend x V ((x_1 V_1) ...)) ((x V) (x_1 V_1) ...)])
 
+;(define-metafunction PCEK
+;  update-p : p V E -> E
+;  [(update-p p V ((x (ph p mt)) (x_1 V_1) ...)) ((x (ph p V)) (x_1 V_1) ...)]
+;  [(update-p p V ((x_1 V_1) (x_2 V_2) ...)) (update-p p V ((x_2 V_2) ...))]
+;  [(update-p p V ()) error])
+
 (define-metafunction PCEK
   update-p : p V E -> E
-  [(update-p p V ((x (ph p mt)) (x_1 V_1) ...)) ((x (ph p V)) (x_1 V_1) ...)]
-  [(update-p p V ((x_1 V_1) (x_2 V_2) ...)) (update p V ((x_2 V_2) ...))]
+  [(update-p p V ((x_1 V_1) ... (x (ph p mt)) (x_2 V_2) ...))
+   ((x_1 V_1) ... (x (ph p V)) (x_2 V_2) ...)]
   [(update-p p V ()) error])
 
 (define-metafunction PCEK
   unload-PCEK : V -> A
-  [(unload-PCEK V)
-   V]
+  [(unload-PCEK c)
+   c]
   [(unload-PCEK (λ (x) M))
    procedure]
   [(unload-PCEK (cons V_1 V_2))
@@ -126,9 +132,9 @@
    (f-let (p (substitute-S S_1 p V)) S_2)]
   [(substitute-S (f-let (p_1 S_1) S_2) p V)
    (f-let (p_1 (substitute-S S_1 p V)) (substitute-S S_2 p V))]
-  [(substitute-S (M E K))
+  [(substitute-S (M E K) p V)
    (M (substitute-E E p V) (substitute-K K p V))]
-  [(substitute-S error)
+  [(substitute-S error p V)
    error]
   )
 
@@ -147,7 +153,14 @@
    ((ar-t x M (substitute-E E p V)) (substitute-K K p V))]
   )
 
-
+(define-metafunction PCEK
+  -->R : S -> S or none
+  [(-->R S)
+   ,(let ([state (apply-reduction-relation -->PCEK (term S))])
+      (cond
+        [(equal? state '()) (term none)]
+        [else (term ,(first state))]))])
+  
 
 
 ;;
@@ -212,7 +225,16 @@
         (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
         if-then]
 
-   ;[--> ((let (x (apply y z)) M) E K)  USE WHERE
+   [--> ((let (x (apply y z)) M) E K)
+        (N (extend x_* (touch (lookup z E)) E_*) ((ar x M E) K))
+        (where ((λ (x_*) N) E_*) (touch (lookup y E)))
+        apply]
+
+   [--> ((let (x (apply y z)) M) E K)
+        error
+        (side-condition (not (redex-match? PCEK ((λ (x_*) N) E_*) (term (touch (lookup y E))))))
+        (side-condition (not (redex-match? PCEK mt (term (touch (lookup y E))))))
+        apply-fail]
 
    [--> ((let (x (future N)) M) E K)
         (N E ((ar-t x M E) K))
@@ -223,7 +245,8 @@
         future-id]
 
    [--> (M E (activation-record_1 ((ar-t x N E_1) K_2)))
-        (f-let (p (M E (activation-record_1 mt))) (N (extend x (ph (generate-p) mt) E_1) K_2))
+        (f-let (p (M E (activation-record_1 mt))) (N (extend x (ph p mt) E_1) K_2))
+        (where p (generate-p))
         fork]
 
    [--> (f-let (p (x E mt)) S)
@@ -240,7 +263,14 @@
 
    [--> (f-let (p S_1) S_2)
         (f-let (p S_1*) S_2)
-        (where #t #t)]
+        (where S_1* (-->R S_1))
+        parallel_S1]
+
+   [--> (f-let (p S_1) S_2)
+        (f-let (p S_1) S_2*)
+        (where S_2* (-->R S_2))
+        ;(where () (-->R S_1))
+        parallel_S2]
    ))
 
 
@@ -256,6 +286,14 @@
   (let ([res (first (apply-reduction-relation*
                      -->PCEK
                      (load-PCEK (term ,inp))))])
+    (cond
+      [(equal? res 'error) 'error]
+      [else (term (unload-PCEK (lookup ,(first res) ,(second res))))])))
+
+(define (eval-S inp)
+  (let ([res (first (apply-reduction-relation*
+                     -->PCEK
+                     (term ,inp)))])
     (cond
       [(equal? res 'error) 'error]
       [else (term (unload-PCEK (lookup ,(first res) ,(second res))))])))
@@ -289,6 +327,95 @@
    ))
  (term 3))
 
+(test-equal
+ (eval-S
+  (term
+   (x ((x (cons 1 (cons 2 (cons 3 4))))) mt)
+   ))
+ (term (cons 1 (cons 2 (cons 3 4)))))
+
+(test-equal
+ (eval-PCEK
+  (term
+   (let (c1 nil)
+     (let (c2 3)
+       (let (c3 4)
+         (let (x (λ (y)
+                   (let (z (if y c2 c3)) z)))
+           (let (y 1)
+             (let (z (apply x y))
+               z))))))
+   ))
+ (term 3))
+
+
+
+(test-equal
+ (eval-PCEK
+  (term
+   (let (c1 nil)
+     (let (c2 3)
+       (let (c3 4)
+         (let (x (λ (y)
+                   (let (z (if y c2 c3)) z)))
+           (let (y nil)
+             (let (z (apply x y))
+               z))))))
+   ))
+ (term 4))
+
+(test-equal
+ (eval-PCEK
+  (term
+   (let (x (future
+            (let (c1 1)
+              (let (c2 2)
+                (let (c3 3)
+                  (let (c4 (if c1 c2 c3)) c4))))))
+     x)
+   ))
+ (term 2))
+
+;(traces
+; -->PCEK
+; (load-PCEK
+;  (term
+;   (let (x (future
+;            (let (c1 1)
+;              (let (c2 2)
+;                (let (c3 3)
+;                  (let (c4 (if c1 c2 c3)) c4))))))
+;     x)
+;   )))
+
+;(traces
+; -->PCEK
+; (load-PCEK
+;  (term
+;   (let (x (future
+;            (let (c1 1)
+;              (let (c2 2)
+;                (let (c3 3)
+;                  (let (c4 (if c1 c2 c3)) c4))))))
+;     (let (c4 4)
+;       (let (c5 5)
+;         (let (y (if x c4 c5)) y))))
+;   )))
+
+(traces
+ -->PCEK
+ (load-PCEK
+  (term
+   (let (x (future
+            (let (c1 1)
+              (let (c2 2)
+                (let (c3 3)
+                  (let (c4 (if c1 c2 c3)) c4))))))
+     (let (c5 4)
+       (let (c6 5)
+         (let (y (if x c5 c6)) y))))
+   )))
+
 
 ;(test-equal
 ; (eval-PCEK (term (let (y 1) (let (x (if y 2 3)) x))))
@@ -317,6 +444,12 @@
 ;  (term
 ;   (let (x 3) let (y (future x) y))
 ;   )))
+
+;(apply-reduction-relation -->PCEK (term ((letr (x 1) x) () mt)))
+;(term (-->R ((let (x 1) x) () mt)))
+;(redex-match? PCEK S (term ((let (x 1) x) () mt)))
+;(term (-->R (x ((x (ph 0 mt))) mt)))
+;
 
 (test-results)
 
