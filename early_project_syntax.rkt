@@ -76,8 +76,8 @@
     bind]
    
    ;; future-id. same as bind here since future has no current functionality differences. pops a let statement
-   [--> (in-hole E (let (x (future M_1)) M_2))
-        (in-hole E (substitute M_2 x M_1))
+   [--> (in-hole E (let (x (future V)) M_2))
+        (in-hole E (substitute M_2 x V))
    ;;[--> (let (x_1 E) (let (x_2 (future V)) M))
    ;;     (let (x_1 E) (substitute M x_2 V))
     future-id]
@@ -443,6 +443,120 @@
  (term 3))
 
 
+(test-equal
+ (eval-C (term (let (y 1) (let (x (if y (let (z 2) z) y)) x))))
+ (term 2))
+
+(test-equal
+ (eval-C (term (let (x (future (let (y nil) y))) (let (z (if x 1 2)) z))))
+ (term 2))
+
+
 ;; Note: no specific section on apply atm. I think I demonstrated it worked pretty well in previous examples, but feel free to add any tests for it below.
+
+(test-equal
+ (eval-C
+  (term
+   (let (x (future
+            (let (c1 1)
+              (let (c2 2)
+                (let (c3 3)
+                  (let (c4 (if c1 c2 c3)) c4))))))
+     x)
+   ))
+ (term 2))
+
+(test-equal
+ (eval-C
+  (term
+   (let (x (future
+            (let (c1 nil)
+              (let (c2 2)
+                (let (c3 nil)
+                  (let (c4 (if c1 c2 c3)) c4))))))
+     (let (y (future
+              (let (c7 1) c7)))
+       (let (c5 x)
+         (let (c6 5)
+           (let (z (if x y c6)) z)))))
+   ))
+ (term 5))
+
+(traces
+ -->C
+ (load-C
+  (term
+   (let (x (future
+            (let (c1 nil)
+              (let (c2 2)
+                (let (c3 nil)
+                  (let (c4 (if c1 c2 c3)) c4))))))
+     (let (y (future
+              (let (c7 1) c7)))
+       (let (c5 x)
+         (let (c6 5)
+           (let (z (if x y c6)) z)))))
+   )))
+
+
+(traces
+ -->C
+ (load-C
+  (term (let (x (future nil)) (let (z (if x 1 2)) z)))))
+(traces
+ -->C
+ (load-C
+  (term (let (x (future (let (y nil) y))) (let (z (if x 1 2)) z)))))
+
+(test-equal
+ (eval-C
+  (term
+   (let (c1 1)
+     (let (c2 2)
+       (let (c3 3)
+         (let (c4 nil)
+           (let (l3 (cons c3 c4))
+             (let (l2 (cons c2 c3))
+               (let (l1 (cons c1 l2))
+                 (let (second (λ (lst)
+                                (let (rest (cdr lst))
+                                  (let (ret (car rest))
+                                    ret))))
+                   (let (l1_sec (future
+                                 (let (l1_sec_temp (apply second l1))
+                                   l1_sec_temp)))
+                     (let (l2_sec (future
+                                   (let (l2_sec_temp (apply second l2))
+                                     l2_sec_temp)))
+                       (let (l3 (cons l1_sec l2_sec))
+                         l3)))))))))))
+   ))
+ (term (cons 2 3)))
+
+(traces
+ -->C
+ (load-C
+  (term
+   (let (c1 1)
+     (let (c2 2)
+       (let (c3 3)
+         (let (c4 nil)
+           (let (l3 (cons c3 c4))
+             (let (l2 (cons c2 c3))
+               (let (l1 (cons c1 l2))
+                 (let (second (λ (lst)
+                                (let (rest (cdr lst))
+                                  (let (ret (car rest))
+                                    ret))))
+                   (let (l1_sec (future
+                                 (let (l1_sec_temp (apply second l1))
+                                   l1_sec_temp)))
+                     (let (l2_sec (future
+                                   (let (l2_sec_temp (apply second l2))
+                                     l2_sec_temp)))
+                       (let (l3 (cons l1_sec l2_sec))
+                         l3)))))))))))
+   ))
+ )
 
 (test-results)
